@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29728.190
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Decompiler", "Decompiler\Decompiler.vcxproj", "{88647778-5E6D-4264-B122-08F803392B68}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Debug|x64 = Debug|x64
+		Release|Win32 = Release|Win32
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{88647778-5E6D-4264-B122-08F803392B68}.Debug|Win32.ActiveCfg = Debug|Win32
+		{88647778-5E6D-4264-B122-08F803392B68}.Debug|Win32.Build.0 = Debug|Win32
+		{88647778-5E6D-4264-B122-08F803392B68}.Debug|x64.ActiveCfg = Debug|x64
+		{88647778-5E6D-4264-B122-08F803392B68}.Debug|x64.Build.0 = Debug|x64
+		{88647778-5E6D-4264-B122-08F803392B68}.Release|Win32.ActiveCfg = Release|Win32
+		{88647778-5E6D-4264-B122-08F803392B68}.Release|Win32.Build.0 = Release|Win32
+		{88647778-5E6D-4264-B122-08F803392B68}.Release|x64.ActiveCfg = Release|x64
+		{88647778-5E6D-4264-B122-08F803392B68}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3FB4BD20-5390-4960-93E4-9531F311A542}
+	EndGlobalSection
+EndGlobal
