@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
 			else {
 				output = input;
 			}
-			std::cout << "Single file, in: " << input.string() << " out: " << output.string() << "\n";
+			//std::cout << "Single file, in: " << input.string() << " out: " << output.string() << "\n";
 			files.push_back(input);
 			isSingleFile = true;
 		}
@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
 		for (auto& thread : threads)
 			thread.join();
 		auto end = std::chrono::system_clock::now();
-		std::cout << "Decomp took " << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 << "s.\n";
+		//std::cout << "Decomp took " << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 << "s.\n";
 
 	} else if (strcmp(argv[1], "-a") == 0) {
 		bool isSingleFile = false;
@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
 		for (auto& thread : threads)
 			thread.join();
 		auto end = std::chrono::system_clock::now();
-		std::cout << "Comp took " << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 << "s.\n";
+		//std::cout << "Comp took " << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 << "s.\n";
 	}
 	else {
 		fprintf(stderr, "Unknown option : %s\n", argv[1]);

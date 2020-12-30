@@ -77,7 +77,7 @@ inline bool is_control_flow(Instruction_Definition* instruction) {
 	return instruction->op_code == 0x8C ||
 		instruction->op_code == 0x8F ||
 		instruction->op_code == 0xA0 ||
-		// set code callbacks (buttons)
+		// set code callbacks (UI buttons)
 		instruction->op_code == 0xCC ||
 		instruction->op_code == 0xFB ||
 		// some call-looping thing
@@ -97,10 +97,6 @@ inline bool is_label_argument(Instruction* instruction, int x) {
 		(instruction->definition->op_code == 0xD4 && x >= 2 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
 		(instruction->definition->op_code == 0x90 && x >= 4 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
 		(instruction->definition->op_code == 0x7B && instruction->arguments[x]->raw_data != 0xFFFFFFFF);
-}
-
-inline bool is_label_argument(Instruction_Definition* instruction) {
-	
 }
 
 template <typename T, size_t N>
