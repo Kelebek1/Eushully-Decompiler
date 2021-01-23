@@ -1,5 +1,5 @@
-// Coded by Kellindil
+#pragma once
+#include <filesystem>
+#include "types.h"
 
-#include <string>
-
-int disassemble(std::filesystem::path input, std::filesystem::path output);
+s32 disassemble(std::filesystem::path input, std::filesystem::path output);

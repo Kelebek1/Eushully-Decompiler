@@ -1,5 +1,5 @@
-// Coded by Kellindil
+#pragma once
+#include <filesystem>
+#include "types.h"
 
-#include <string>
-
-int assemble(std::filesystem::path input, std::filesystem::path output);
+s32 assemble(std::filesystem::path input, std::filesystem::path output);
