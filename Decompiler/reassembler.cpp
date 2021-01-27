@@ -173,13 +173,6 @@ s32 assemble(std::filesystem::path input, std::filesystem::path output) {
         std::string instruction{ parse_multiple_arguments(line, re_parse_instr)[0][0] };
         std::vector<Argument*> arguments{};
 
-        // str_arguments is a 2D array of argument and argument info
-        // str_arguments[x][ARG_REG_TYPE] contains scope and type          (e.g. the "global-int" in "global-int 7")
-        // str_arguments[x][ARG_REG_NUM]  contains value when above is set (e.g. the 7 in "global-int 7")
-        // str_arguments[x][ARG_STR]      contains string literals
-        // str_arguments[x][ARG_LABEL]    contains labels
-        // str_arguments[x][ARG_VALUE]    contains number literals
-
         if (instruction.starts_with("label_")) {
             label_to_offset[std::stoul(instruction.substr(6), nullptr, 16)] = data_array_end;
             continue;
@@ -205,6 +198,13 @@ s32 assemble(std::filesystem::path input, std::filesystem::path output) {
             // read in the arguments of this function
             for (auto& arg : str_arguments) {
                 Argument* current = new Argument;
+
+                // str_arguments is a 2D vector of argument and argument info
+                // str_arguments[x][ARG_REG_TYPE] contains scope and type          (e.g. the "global-int" in "global-int 7")
+                // str_arguments[x][ARG_REG_NUM]  contains value when above is set (e.g. the 7 in "global-int 7")
+                // str_arguments[x][ARG_STR]      contains string literals
+                // str_arguments[x][ARG_LABEL]    contains labels
+                // str_arguments[x][ARG_VALUE]    contains number literals
 
                 if (!arg[ARG_REG_TYPE].empty()) {
                     current->type = get_type(arg[ARG_REG_TYPE]);

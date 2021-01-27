@@ -82,9 +82,9 @@ struct Instruction_Definition {
 struct Instruction {
     const Instruction_Definition* definition;
     std::vector<Argument*> arguments;
-    u32 offset;
+    std::streamoff offset;
 
-    Instruction(const Instruction_Definition* def, std::vector<Argument*> args, u32 off) {
+    Instruction(const Instruction_Definition* def, std::vector<Argument*> args, std::streamoff off) {
         definition = def;
         arguments = args;
         offset = off;

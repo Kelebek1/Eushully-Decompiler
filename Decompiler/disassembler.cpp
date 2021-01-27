@@ -4,7 +4,7 @@
 #include "disassembler.h"
 #include "age-shared.h"
 
-Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* def, u32 offset, u32* data_array_end) {
+Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* def, std::streamoff offset, std::streamoff* data_array_end) {
     std::vector<Argument*> arguments;
 
     u32 current = 0;
@@ -16,11 +16,11 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
         // If this instruction is a 'String' or copy-array argument, we have to alter data_array_end accordingly.
         if (arg->type == 2) {
             // Strings are all located at the end of the data array, XORed with 0xFF, and separated by 0xFF.
-            u32 string_offset = HEADER_LENGTH + (arg->raw_data << 2);
+            std::streamoff string_offset = HEADER_LENGTH + static_cast<std::int64_t>(arg->raw_data << 2);
             *data_array_end = std::min(*data_array_end, string_offset);
             
             // mark current
-            u32 cur_off = fd.tellg();
+            std::streamoff cur_off = fd.tellg();
 
             // jump to string offset
             fd.seekg(string_offset, std::ios::beg);
@@ -44,11 +44,11 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
         }
         else if (def->op_code == 0x64 && current == 1) {
             // This instruction actually references an array in the file's footer.
-            u32 array_offset = HEADER_LENGTH + (arg->raw_data << 2);
+            std::streamoff array_offset = HEADER_LENGTH + static_cast<std::int64_t>(arg->raw_data << 2);
             *data_array_end = std::min(*data_array_end, array_offset);
 
             // mark current
-            u32 cur_off = fd.tellg();
+            std::streamoff cur_off = fd.tellg();
 
             // Jump to array offset
             fd.seekg(array_offset, std::ios::beg);
@@ -60,8 +60,8 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
         }
 
         if (arg->type < 0 || (arg->type > 0xE && arg->type < 0x8003) || arg->type > 0x800B) {
-            u32 cur_off = fd.tellg();
-            fprintf(stderr, "Pos : %x -> Opcode : %x, argument %d\n", cur_off, def->op_code, current);
+            std::streamoff cur_off = fd.tellg();
+            fprintf(stderr, "Pos : %llx -> Opcode : %x, argument %d\n", cur_off, def->op_code, current);
             fprintf(stderr, "Unknown type : %x\n", arg->type);
             fprintf(stderr, "Value : %x\n", arg->raw_data);
             fd.close();
@@ -242,18 +242,18 @@ s32 disassemble(std::filesystem::path input, std::filesystem::path output) {
     BinaryHeader header;
     fd >> header;
 
-    u32 data_array_end = HEADER_LENGTH + (std::min(std::min(header.table_1_offset, header.table_2_offset), header.table_3_offset) << 2);
-    u32 strings_end = data_array_end;
+    std::streamoff data_array_end = HEADER_LENGTH + (std::min(std::min(header.table_1_offset, header.table_2_offset), header.table_3_offset) << 2);
+    std::streamoff strings_end = data_array_end;
 
     std::vector<Instruction*> instructions;
     while (fd.tellg() < data_array_end) {
-        u32 offset = fd.tellg();
+        std::streamoff offset = fd.tellg();
         u32 op_code; 
         fd.read((char*)&op_code, sizeof(op_code));
 
         const Instruction_Definition* def = instruction_for_op_code(op_code);
         if (def == nullptr) {
-            fprintf(stderr, "Unknown instruction : 0x%x at 0x%x\n", op_code, offset);
+            fprintf(stderr, "Unknown instruction : 0x%x at 0x%llx\n", op_code, offset);
             fd.close();
             exit(-1);
         }

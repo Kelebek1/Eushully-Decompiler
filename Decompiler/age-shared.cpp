@@ -6,8 +6,8 @@
 #include "Windows.h"
 
 // Keep this array ordered by op_code for binary search
-constexpr auto definitions{
-    std::to_array< Instruction_Definition>({
+constexpr static auto definitions{
+    std::to_array<Instruction_Definition>({
         {0x1, "u004149C0", 0x0}, // error
         {0x2, "exit", 0x0},
         {0x3, "call-script", 0x1}, // call another script, param = SYSTEM4.bin index
@@ -550,7 +550,7 @@ constexpr auto definitions{
 
 const Instruction_Definition* instruction_for_op_code(u32 op_code) {
     u32 low = 0;
-    u32 high = definitions.size() - 1;
+    u32 high = (u32)definitions.size() - 1;
 
     while (low <= high) {
         u32 mid = (low + high) >> 1;
@@ -572,22 +572,19 @@ const Instruction_Definition* instruction_for_op_code(u32 op_code) {
 
 const Instruction_Definition* instruction_for_label(std::string label) {
     // We'll have to actually scan through here
-    for (auto& def : definitions) {
-        if (label == def.label) {
-            return &def;
-        }
-    }
-    return nullptr;
+    const auto it = std::find_if(definitions.begin(), definitions.end(), 
+        [&](const Instruction_Definition& val) { return val.label == label; });
+    return it != definitions.end() ? &*it : nullptr;
 }
 
 std::string cp932_to_utf8(const std::string& sjis) {
     std::string utf8_string;
     LPCCH pSJIS = (LPCCH)sjis.c_str();
-    int utf16size = MultiByteToWideChar(932, MB_ERR_INVALID_CHARS, pSJIS, -1, 0, 0);
+    s32 utf16size = MultiByteToWideChar(932, MB_ERR_INVALID_CHARS, pSJIS, -1, 0, 0);
     if (utf16size != 0) {
         LPWSTR pUTF16 = new WCHAR[utf16size];
         if (MultiByteToWideChar(932, 0, (LPCCH)pSJIS, -1, pUTF16, utf16size) != 0) {
-            long long utf8size = WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, 0, 0, 0, 0);
+            s32 utf8size = WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, 0, 0, 0, 0);
             if (utf8size != 0) {
                 LPTSTR pUTF8 = new TCHAR[utf8size + 16];
                 ZeroMemory(pUTF8, utf8size + 16);
@@ -605,11 +602,11 @@ std::string cp932_to_utf8(const std::string& sjis) {
 std::string utf8_to_cp932(const std::string& utf8) {
     std::string sjis_string;
     LPCCH pUTF8 = (LPCCH)utf8.c_str();
-    int utf16size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, pUTF8, -1, 0, 0);
+    s32 utf16size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, pUTF8, -1, 0, 0);
     if (utf16size != 0) {
         LPWSTR pUTF16 = new WCHAR[utf16size];
         if (MultiByteToWideChar(CP_UTF8, 0, (LPCCH)pUTF8, -1, pUTF16, utf16size) != 0) {
-            long long sjissize = WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, 0, 0, 0, 0);
+            s32 sjissize = WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, 0, 0, 0, 0);
             if (sjissize != 0) {
                 LPTSTR pSJIS = new TCHAR[sjissize + 16];
                 ZeroMemory(pSJIS, sjissize + 16);
