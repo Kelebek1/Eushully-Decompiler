@@ -51,10 +51,10 @@ std::vector< std::vector<std::string>> parse_multiple_arguments(std::string line
     while (std::regex_search(line, matches, regex)) {
         std::vector<std::string> sub_elements;
         for (u32 i{ 1 }; i < matches.size(); ++i) {
-            sub_elements.push_back(matches.str(i));
+            sub_elements.emplace_back(matches.str(i));
         }
-        elements.push_back(sub_elements);
-        line = matches.suffix().str();
+        elements.emplace_back(sub_elements);
+        line = std::move(matches.suffix().str());
     }
 
     return elements;
@@ -171,7 +171,7 @@ s32 assemble(std::filesystem::path input, std::filesystem::path output) {
         }
 
         std::string instruction{ parse_multiple_arguments(line, re_parse_instr)[0][0] };
-        std::vector<Argument*> arguments{};
+        std::vector<const Argument*> arguments{};
 
         if (instruction.starts_with("label_")) {
             label_to_offset[std::stoul(instruction.substr(6), nullptr, 16)] = data_array_end;

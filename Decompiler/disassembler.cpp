@@ -5,7 +5,7 @@
 #include "age-shared.h"
 
 Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* def, std::streamoff offset, std::streamoff* data_array_end) {
-    std::vector<Argument*> arguments;
+    std::vector<const Argument*> arguments;
 
     u32 current = 0;
     while (current < def->argument_count) {
@@ -106,7 +106,7 @@ std::string disassemble_header(BinaryHeader header) {
     return stream.str();
 }
 
-std::string get_type_label(u32 type) {
+const std::string get_type_label(u32 type) {
     switch (type) {
         case 0:   return "";
         // Not the best way to handle floats, but will do for now.
@@ -215,8 +215,7 @@ void write_script_file(std::filesystem::path& file_path, BinaryHeader& header, s
 
     std::ofstream output(file_path, std::ios::out);
 
-    std::string header_value = disassemble_header(header);
-    output << header_value;
+    output << disassemble_header(header);
 
     for (auto& instruction : instructions) {
         // If this instruction is referenced as a label, make it clear
@@ -228,8 +227,7 @@ void write_script_file(std::filesystem::path& file_path, BinaryHeader& header, s
             output << label_instr.str();
         }
 
-        std::string instruction_value = disassemble_instruction(instruction);
-        output << instruction_value;
+        output << disassemble_instruction(instruction);
     }
 
     output.close();

@@ -427,7 +427,7 @@ constexpr static auto definitions{
         {0x2C1, "u00425BC0", 0x1},
         {0x2C2, "u00425CD0", 0x6},
         {0x2C3, "u00423200", 0x2},
-        {0x2C4, "log", 0x0}, // using as a way to test logging, originally u00416450
+        {0x2C4, "u00416450", 0x0}, // using as a way to test logging, originally u00416450
         {0x2C5, "strlen", 0x2}, // u0042B5D0 : strlen. param1 = param2.length()
         {0x2C6, "u0042B5E0", 0x2},
         {0x2C7, "u0042B5F0", 0x4},
@@ -549,6 +549,9 @@ constexpr static auto definitions{
 };
 
 const Instruction_Definition* instruction_for_op_code(u32 op_code) {
+    auto instr = opcode_memo[op_code];
+    if (instr != nullptr) return instr;
+
     u32 low = 0;
     u32 high = (u32)definitions.size() - 1;
 
@@ -563,6 +566,7 @@ const Instruction_Definition* instruction_for_op_code(u32 op_code) {
             high = mid - 1;
         }
         else {
+            opcode_memo[op_code] = &definitions[mid];
             return &definitions[mid];
         }
     }
@@ -571,10 +575,17 @@ const Instruction_Definition* instruction_for_op_code(u32 op_code) {
 }
 
 const Instruction_Definition* instruction_for_label(std::string label) {
+    auto instr = str_memo[label];
+    if (instr != nullptr) return instr;
+
     // We'll have to actually scan through here
     const auto it = std::find_if(definitions.begin(), definitions.end(), 
         [&](const Instruction_Definition& val) { return val.label == label; });
-    return it != definitions.end() ? &*it : nullptr;
+
+    if (it == definitions.end()) return nullptr;
+
+    str_memo[label] = &*it;
+    return &*it;
 }
 
 std::string cp932_to_utf8(const std::string& sjis) {

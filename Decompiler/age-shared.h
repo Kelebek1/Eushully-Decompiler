@@ -4,6 +4,8 @@
 #include <io.h>
 #include <array>
 #include <fstream>
+#include <map>
+#include <unordered_map>
 #include "types.h"
 
 #define HEADER_LENGTH 60
@@ -56,7 +58,6 @@ struct Data_Array {
         }
         return is;
     };
-
 };
 
 struct Argument {
@@ -81,17 +82,20 @@ struct Instruction_Definition {
 
 struct Instruction {
     const Instruction_Definition* definition;
-    std::vector<Argument*> arguments;
+    std::vector<const Argument*> arguments;
     std::streamoff offset;
 
-    Instruction(const Instruction_Definition* def, std::vector<Argument*> args, std::streamoff off) {
-        definition = def;
-        arguments = args;
-        offset = off;
+    Instruction(const Instruction_Definition* def, std::vector<const Argument*> args, std::streamoff off) : 
+        definition(std::move(def)),
+        arguments(std::move(args)),
+        offset(std::move(off))
+    {
+        
     }
 };
 
-int open_or_die(const std::filesystem::path& file_name, s32 flag, s32 mode = 0);
+static std::unordered_map<u32, const Instruction_Definition*> opcode_memo{};
+static std::map<const std::string, const Instruction_Definition*> str_memo{};
 
 const Instruction_Definition* instruction_for_op_code(u32 op_code);
 const Instruction_Definition* instruction_for_label(std::string label);
@@ -103,7 +107,7 @@ inline bool is_control_flow(const Instruction_Definition* instruction) {
     return instruction->op_code == 0x8C ||
         instruction->op_code == 0x8F ||
         instruction->op_code == 0xA0 ||
-        // set code callbacks (UI buttons)
+        // code callbacks (UI buttons)
         instruction->op_code == 0xCC ||
         instruction->op_code == 0xFB ||
         // some call-looping thing
