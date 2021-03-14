@@ -1,11 +1,12 @@
-#include <set>
+#include <unordered_set>
 #include <sstream>
 
 #include "disassembler.h"
 #include "age-shared.h"
 
-Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* def, std::streamoff offset, std::streamoff* data_array_end) {
+Instruction* parse_instruction(std::istream& fd, const Instruction_Definition* def, std::streamoff offset, std::streamoff* data_array_end) {
     std::vector<const Argument*> arguments;
+    arguments.reserve(def->argument_count);
 
     u32 current = 0;
     while (current < def->argument_count) {
@@ -16,9 +17,9 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
         // If this instruction is a 'String' or copy-array argument, we have to alter data_array_end accordingly.
         if (arg->type == 2) {
             // Strings are all located at the end of the data array, XORed with 0xFF, and separated by 0xFF.
-            std::streamoff string_offset = HEADER_LENGTH + static_cast<std::int64_t>(arg->raw_data << 2);
+            std::streamoff string_offset = HEADER_LENGTH + (static_cast<uint64_t>(arg->raw_data) << 2);
             *data_array_end = std::min(*data_array_end, string_offset);
-            
+
             // mark current
             std::streamoff cur_off = fd.tellg();
 
@@ -26,25 +27,24 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
             fd.seekg(string_offset, std::ios::beg);
 
             // read the string, XOR'ing each character
-            std::stringstream decodedstream;
-            u8 character; 
+            std::string decoded;
+            decoded.reserve(32);
+            u8 character{};
             fd.read((char*)&character, sizeof(character));
             while (character != 0xFF) {
                 character ^= 0xFF;
-                decodedstream << character;
+                decoded += character;
                 fd.read((char*)&character, sizeof(character));
             }
-            std::string decoded = decodedstream.str();
 
             // convert it over to UTF8 for easier text editing
-            arg->decoded_string = cp932_to_utf8(decoded);
+            arg->decoded_string = utf16_to_cp(CP_UTF8, cp_to_utf16(CP_932, decoded));
 
             // Go back to the instruction position
             fd.seekg(cur_off, std::ios::beg);
-        }
-        else if (def->op_code == 0x64 && current == 1) {
+        } else if (def->op_code == 0x64 && current == 1) {
             // This instruction actually references an array in the file's footer.
-            std::streamoff array_offset = HEADER_LENGTH + static_cast<std::int64_t>(arg->raw_data << 2);
+            std::streamoff array_offset = HEADER_LENGTH + (static_cast<std::int64_t>(arg->raw_data) << 2);
             *data_array_end = std::min(*data_array_end, array_offset);
 
             // mark current
@@ -64,10 +64,9 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
             fprintf(stderr, "Pos : %llx -> Opcode : %x, argument %d\n", cur_off, def->op_code, current);
             fprintf(stderr, "Unknown type : %x\n", arg->type);
             fprintf(stderr, "Value : %x\n", arg->raw_data);
-            fd.close();
             exit(-1);
         }
-        
+
         arguments.push_back(arg);
         current++;
     }
@@ -80,7 +79,7 @@ Instruction* parse_instruction(std::ifstream& fd, const Instruction_Definition* 
 std::string disassemble_header(BinaryHeader header) {
     std::stringstream stream;
     stream << HEADER_PREFIX;
-    
+
     stream << SIGNATURE_PREFIX;
     // Drive out the erroneous last byte of signature.
     std::basic_string<u8> sig{ header.signature };
@@ -108,33 +107,38 @@ std::string disassemble_header(BinaryHeader header) {
 
 const std::string get_type_label(u32 type) {
     switch (type) {
-        case 0:   return "";
+    case 0:   return "";
         // Not the best way to handle floats, but will do for now.
-        case 1:   return "float";
-        case 2:   return "";
-        case 3:   return "global-int";
-        case 4:   return "global-float";
-        case 5:   return "global-string";
-        case 6:   return "global-ptr";
-        case 8:   return "global-string-ptr";
-        case 9:   return "local-int";
-        case 0xA: return "local-float";
-        case 0xB: return "local-string";
-        case 0xC: return "local-ptr";
-        case 0xD: return "local-float-ptr";
-        case 0xE: return "local-string-ptr";
-            
+    case 1:   return "float";
+    case 2:   return "";
+    case 3:   return "global-int";
+    case 4:   return "global-float";
+    case 5:   return "global-string";
+    case 6:   return "global-ptr";
+    case 8:   return "global-string-ptr";
+    case 9:   return "local-int";
+    case 0xA: return "local-float";
+    case 0xB: return "local-string";
+    case 0xC: return "local-ptr";
+    case 0xD: return "local-float-ptr";
+    case 0xE: return "local-string-ptr";
+
         // In Sankai no Yubiwa onwards, why?
-        case 0x8003: return "0x8003";
-        case 0x8005: return "0x8005";
-        case 0x8009: return "0x8009";
-        case 0x800B: return "0x800B";
-            
-        default: fprintf(stderr, "Unknown type value: %x\n", type);
+        // Another type of int and string?
+    case 0x8003: return "0x8003";
+    case 0x8005: return "0x8005";
+    case 0x8009: return "0x8009";
+    case 0x800B: return "0x800B";
+
+    default:
+    {
+        fprintf(stderr, "Unknown type value: %x\n", type);
+        exit(-1);
+    }
     }
 }
 
-std::string disassemble_instruction(Instruction* instruction) {
+std::string disassemble_instruction(const Instruction* instruction) {
     std::stringstream stream;
 
     // Give the loc of where we are
@@ -154,14 +158,12 @@ std::string disassemble_instruction(Instruction* instruction) {
             stream << '(';
             stream << type_label << ' ' << std::hex << argument->raw_data;
             stream << ')';
-        }
-        else if (argument->type == 2) {
+        } else if (argument->type == 2) {
             // e.g. "this is a string"
             stream << '"';
             stream << argument->decoded_string;
             stream << '"';
-        }
-        else if (instruction->definition->op_code == 0x64 && argument->type == 0) {
+        } else if (instruction->definition->op_code == 0x64 && argument->type == 0) {
             // e.g. [1 2 3 4 5 6]
             stream << "[";
             for (u32 i = 0; i < argument->data_array.length; i++) {
@@ -171,17 +173,15 @@ std::string disassemble_instruction(Instruction* instruction) {
                 }
             }
             stream << "]";
-        }
-        else if (is_control_flow(instruction)) {
+        } else if (is_control_flow(instruction)) {
             // e.g. label_99C8
             if (is_label_argument(instruction, x)) {
                 stream << "label_";
-                stream << std::hex << (argument->raw_data << 2) + HEADER_LENGTH;
+                stream << std::hex << HEADER_LENGTH + (static_cast<uint64_t>(argument->raw_data) << 2);
             } else {
                 stream << std::hex << argument->raw_data;
             }
-        }
-        else {
+        } else {
             stream << std::hex << argument->raw_data;
         }
         if (x < instruction->arguments.size() - 1) {
@@ -196,12 +196,10 @@ std::string disassemble_instruction(Instruction* instruction) {
     return stream.str();
 }
 
-void write_script_file(std::filesystem::path& file_path, BinaryHeader& header, std::vector<Instruction*>& instructions) {
+std::stringstream write_script_file(BinaryHeader& header, std::vector<const Instruction*>& instructions) {
     // Find out which of our instructions are labels
-    std::set<u32> labels;
+    std::unordered_set<u32> labels;
     for (auto& instruction : instructions) {
-        // control flow instructions are call (0x8F), jmp (0x8C) and jcc (0xA0)
-        // also code callback locations (e.g. button onClick): 0xCC, 0xFB 
         if (is_control_flow(instruction)) {
             s32 x{0};
             for (auto& argument : instruction->arguments) {
@@ -213,11 +211,11 @@ void write_script_file(std::filesystem::path& file_path, BinaryHeader& header, s
         }
     }
 
-    std::ofstream output(file_path, std::ios::out);
+    std::stringstream output(std::stringstream::in | std::stringstream::out | std::stringstream::binary);
 
     output << disassemble_header(header);
 
-    for (auto& instruction : instructions) {
+    for (const auto& instruction : instructions) {
         // If this instruction is referenced as a label, make it clear
         if (labels.find(instruction->offset) != labels.end()) {
             std::stringstream label_instr;
@@ -230,38 +228,29 @@ void write_script_file(std::filesystem::path& file_path, BinaryHeader& header, s
         output << disassemble_instruction(instruction);
     }
 
-    output.close();
+    output.flush();
+    return output;
 }
 
-s32 disassemble(std::filesystem::path input, std::filesystem::path output) {
-    fprintf(stdout, "Disassembling %s into %s\n", input.string().c_str(), output.string().c_str());
-
-    std::ifstream fd(input, std::ios::in | std::ios::binary);
+std::stringstream disassemble(std::istream& fd) {
     BinaryHeader header;
     fd >> header;
 
-    std::streamoff data_array_end = HEADER_LENGTH + (std::min(std::min(header.table_1_offset, header.table_2_offset), header.table_3_offset) << 2);
+    std::streamoff data_array_end = HEADER_LENGTH + (static_cast<uint64_t>(std::min(std::min(header.table_1_offset, header.table_2_offset), header.table_3_offset)) << 2);
     std::streamoff strings_end = data_array_end;
 
-    std::vector<Instruction*> instructions;
+    std::vector<const Instruction*> instructions;
+    instructions.reserve(50'000); // Checked over a few games to get this
+
     while (fd.tellg() < data_array_end) {
         std::streamoff offset = fd.tellg();
-        u32 op_code; 
+        u32 op_code{};
         fd.read((char*)&op_code, sizeof(op_code));
 
-        const Instruction_Definition* def = instruction_for_op_code(op_code);
-        if (def == nullptr) {
-            fprintf(stderr, "Unknown instruction : 0x%x at 0x%llx\n", op_code, offset);
-            fd.close();
-            exit(-1);
-        }
-
-        instructions.push_back(parse_instruction(fd, def, (offset - HEADER_LENGTH) >> 2, &data_array_end));
+        const Instruction_Definition* def = instruction_for_op_code(op_code, offset);
+        const Instruction* instr = parse_instruction(fd, def, (offset - HEADER_LENGTH) >> 2, &data_array_end);
+        instructions.push_back(instr);
     }
 
-    fd.close();
-
-    write_script_file(output, header, instructions);
-
-    return 0;
+    return write_script_file(header, instructions);
 }

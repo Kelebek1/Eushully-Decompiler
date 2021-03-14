@@ -2,4 +2,4 @@
 #include <filesystem>
 #include "types.h"
 
-s32 disassemble(std::filesystem::path input, std::filesystem::path output);
+std::stringstream disassemble(std::istream& fd);

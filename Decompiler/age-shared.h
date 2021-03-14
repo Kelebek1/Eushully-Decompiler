@@ -1,22 +1,28 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <io.h>
 #include <array>
 #include <fstream>
 #include <map>
 #include <unordered_map>
+#include <filesystem>
 #include "types.h"
 
-#define HEADER_LENGTH 60
+static constexpr size_t HEADER_LENGTH = 60;
 static const std::string HEADER_PREFIX = "==Binary Information - do not edit==\n";
 static const std::string HEADER_SUFFIX = "====\n\n";
 static const std::string SIGNATURE_PREFIX = "signature = ";
 static const std::string VARS_PREFIX = "\nlocal_vars = { ";
 static const std::string VARS_SUFFIX = " }\n";
 
+#define CP_UTF8 65001
+#define CP_932 932
+
+std::wstring cp_to_utf16(u32 code_page, const std::string& input);
+std::string utf16_to_cp(u32 code_page, const std::wstring& input);
+
 struct BinaryHeader {
-    u8 signature[8]{};
+    u8 signature[8];
 
     u32 local_integer_1;
     u32 local_floats;
@@ -36,8 +42,7 @@ struct BinaryHeader {
     u32 table_3_length;
     u32 table_3_offset;
 
-    friend std::ifstream& operator>>(std::ifstream& is, BinaryHeader& hdr)
-    {
+    friend std::istream& operator>>(std::istream& is, BinaryHeader& hdr) {
         is.read((char*)&hdr, sizeof(BinaryHeader));
         return is;
     };
@@ -47,11 +52,10 @@ struct Data_Array {
     u32 length;
     std::vector<u32> data;
 
-    friend std::ifstream& operator>>(std::ifstream& is, Data_Array& da)
-    {
+    friend std::istream& operator>>(std::istream& is, Data_Array& da) {
         is.read((char*)&da.length, sizeof(da.length));
         da.data.reserve(da.length);
-        for (u32 i{}; i < da.data.capacity(); ++i) {
+        for (u32 i{ 0 }; i < da.data.capacity(); ++i) {
             u32 val;
             is.read((char*)&val, sizeof(val));
             da.data.push_back(val);
@@ -66,8 +70,7 @@ struct Argument {
     std::string decoded_string{};
     Data_Array data_array{};
 
-    friend std::ifstream& operator>>(std::ifstream& is, Argument& arg)
-    {
+    friend std::istream& operator>>(std::istream& is, const Argument& arg) {
         is.read((char*)&arg.type, sizeof(arg.type));
         is.read((char*)&arg.raw_data, sizeof(arg.raw_data));
         return is;
@@ -85,25 +88,18 @@ struct Instruction {
     std::vector<const Argument*> arguments;
     std::streamoff offset;
 
-    Instruction(const Instruction_Definition* def, std::vector<const Argument*> args, std::streamoff off) : 
+    Instruction(const Instruction_Definition* def, std::vector<const Argument*> args, std::streamoff off) :
         definition(std::move(def)),
         arguments(std::move(args)),
-        offset(std::move(off))
-    {
-        
+        offset(std::move(off)) {
+
     }
 };
 
-static std::unordered_map<u32, const Instruction_Definition*> opcode_memo{};
-static std::map<const std::string, const Instruction_Definition*> str_memo{};
+const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamoff offset);
+const Instruction_Definition* instruction_for_label(const std::string& label);
 
-const Instruction_Definition* instruction_for_op_code(u32 op_code);
-const Instruction_Definition* instruction_for_label(std::string label);
-
-std::string cp932_to_utf8(const std::string& sjis);
-std::string utf8_to_cp932(const std::string& utf8);
-
-inline bool is_control_flow(const Instruction_Definition* instruction) {
+inline constexpr bool is_control_flow(const Instruction_Definition* instruction) {
     return instruction->op_code == 0x8C ||
         instruction->op_code == 0x8F ||
         instruction->op_code == 0xA0 ||
@@ -116,15 +112,15 @@ inline bool is_control_flow(const Instruction_Definition* instruction) {
         instruction->op_code == 0x7B;
 }
 
-inline bool is_control_flow(const Instruction* instruction) {
+inline constexpr bool is_control_flow(const Instruction* instruction) {
     return is_control_flow(instruction->definition);
 }
 
-inline bool is_array(const Instruction_Definition* instruction) {
+inline constexpr bool is_array(const Instruction_Definition* instruction) {
     return instruction->op_code == 0x64;
 }
 
-inline bool is_label_argument(const Instruction* instruction, s32 x) {
+inline constexpr bool is_label_argument(const Instruction* instruction, s32 x) {
     return ((instruction->definition->op_code == 0x8C || instruction->definition->op_code == 0x8F) && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
         (instruction->definition->op_code == 0xA0 && x > 0 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
         ((instruction->definition->op_code == 0xCC || instruction->definition->op_code == 0xFB) && x > 0 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||

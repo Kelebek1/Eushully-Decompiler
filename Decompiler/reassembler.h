@@ -2,4 +2,4 @@
 #include <filesystem>
 #include "types.h"
 
-s32 assemble(std::filesystem::path input, std::filesystem::path output);
+std::stringstream assemble(std::istream& input);

@@ -29,9 +29,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="age-shared.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="disassembler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -39,6 +36,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="age-shared.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

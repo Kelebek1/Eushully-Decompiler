@@ -1,9 +1,5 @@
-#include <cstdio>
-#include <cstdlib>
-#include <filesystem>
-#include <array>
-#include "age-shared.h"
 #include "Windows.h"
+#include "age-shared.h"
 
 // Keep this array ordered by op_code for binary search
 constexpr static auto definitions{
@@ -81,7 +77,7 @@ constexpr static auto definitions{
         {0x65, "u00414AA0", 0x2},
         {0x66, "u00414AE0", 0x3},
         {0x67, "u00414B20", 0x3},
-        {0x68, "u00414B60", 0x3}, 
+        {0x68, "u00414B60", 0x3},
         {0x69, "u00414BA0", 0x3},
         {0x6A, "u00414BE0", 0x3},
         {0x6B, "u00414C20", 0x3},
@@ -434,7 +430,7 @@ constexpr static auto definitions{
         {0x2C8, "u0042B610", 0x4},
         {0x2C9, "2C9", 0x3}, // Sankai no Yubiwa
         {0x2CC, "2CC", 0x1}, // Sankai no Yubiwa
-        {0x2CD, "2CD", 0x1 }, // Sankai no Yubiwa
+        {0x2CD, "2CD", 0x1}, // Sankai no Yubiwa
         {0x2CE, "u0042B616", 0x1},
         {0x2CF, "u0042B617", 0x1},
         {0x2D0, "u0042B940", 0x3},
@@ -545,13 +541,10 @@ constexpr static auto definitions{
         {0x392, "392", 0x1}, // Tenmei no Conquista
         {0x396, "396", 0x5}, // Tenmei no Conquista
         {0x399, "399", 0x7}, // Tenmei no Conquista
-    })
+        })
 };
 
-const Instruction_Definition* instruction_for_op_code(u32 op_code) {
-    auto instr = opcode_memo[op_code];
-    if (instr != nullptr) return instr;
-
+const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamoff offset) {
     u32 low = 0;
     u32 high = (u32)definitions.size() - 1;
 
@@ -561,73 +554,69 @@ const Instruction_Definition* instruction_for_op_code(u32 op_code) {
 
         if (mid_op_code < op_code) {
             low = mid + 1;
-        }
-        else if (mid_op_code > op_code) {
+        } else if (mid_op_code > op_code) {
             high = mid - 1;
-        }
-        else {
-            opcode_memo[op_code] = &definitions[mid];
+        } else {
             return &definitions[mid];
         }
     }
 
+    fprintf(stderr, "Unknown instruction : 0x%x at 0x%llx\n", op_code, offset);
+    exit(-1);
+
     return nullptr;
 }
 
-const Instruction_Definition* instruction_for_label(std::string label) {
+static std::map<const std::string, const Instruction_Definition*> str_memo;
+
+const Instruction_Definition* instruction_for_label(const std::string& label) {
     auto instr = str_memo[label];
     if (instr != nullptr) return instr;
 
     // We'll have to actually scan through here
-    const auto it = std::find_if(definitions.begin(), definitions.end(), 
-        [&](const Instruction_Definition& val) { return val.label == label; });
+    const auto it = std::find_if(definitions.begin(), definitions.end(),
+                                 [&](const Instruction_Definition& val) { return val.label == label; });
 
-    if (it == definitions.end()) return nullptr;
+    //const std::string insert{label};
+    if (it != definitions.end()) {
+        str_memo[label] = &*it;
+        return &*it;
+    }
 
-    str_memo[label] = &*it;
-    return &*it;
+    fprintf(stderr, "unknown instruction : %s\n", label.c_str());
+    exit(-1);
+
+    return nullptr;
 }
 
-std::string cp932_to_utf8(const std::string& sjis) {
-    std::string utf8_string;
-    LPCCH pSJIS = (LPCCH)sjis.c_str();
-    s32 utf16size = MultiByteToWideChar(932, MB_ERR_INVALID_CHARS, pSJIS, -1, 0, 0);
-    if (utf16size != 0) {
-        LPWSTR pUTF16 = new WCHAR[utf16size];
-        if (MultiByteToWideChar(932, 0, (LPCCH)pSJIS, -1, pUTF16, utf16size) != 0) {
-            s32 utf8size = WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, 0, 0, 0, 0);
-            if (utf8size != 0) {
-                LPTSTR pUTF8 = new TCHAR[utf8size + 16];
-                ZeroMemory(pUTF8, utf8size + 16);
-                if (WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, (LPSTR)pUTF8, utf8size, 0, 0) != 0) {
-                    utf8_string = std::string((char*)pUTF8);
-                }
-                delete[] pUTF8;
-            }
-        }
-        delete[] pUTF16;
+std::wstring cp_to_utf16(u32 code_page, const std::string& input) {
+    const auto in_size = MultiByteToWideChar(code_page, 0, input.data(), static_cast<int>(input.size()), nullptr, 0);
+
+    if (in_size == 0) {
+        return L"";
     }
-    return utf8_string;
+
+    std::wstring utf16(in_size, L'\0');
+
+    if (in_size != MultiByteToWideChar(code_page, 0, input.data(), static_cast<int>(input.size()), utf16.data(), static_cast<int>(utf16.size()))) {
+        utf16.clear();
+    }
+
+    return utf16;
 }
 
-std::string utf8_to_cp932(const std::string& utf8) {
-    std::string sjis_string;
-    LPCCH pUTF8 = (LPCCH)utf8.c_str();
-    s32 utf16size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, pUTF8, -1, 0, 0);
-    if (utf16size != 0) {
-        LPWSTR pUTF16 = new WCHAR[utf16size];
-        if (MultiByteToWideChar(CP_UTF8, 0, (LPCCH)pUTF8, -1, pUTF16, utf16size) != 0) {
-            s32 sjissize = WideCharToMultiByte(CP_UTF8, 0, pUTF16, -1, 0, 0, 0, 0);
-            if (sjissize != 0) {
-                LPTSTR pSJIS = new TCHAR[sjissize + 16];
-                ZeroMemory(pSJIS, sjissize + 16);
-                if (WideCharToMultiByte(932, 0, pUTF16, -1, (LPSTR)pSJIS, sjissize, 0, 0) != 0) {
-                    sjis_string = std::string((char*)pSJIS);
-                }
-                delete[] pSJIS;
-            }
-        }
-        delete[] pUTF16;
+std::string utf16_to_cp(u32 code_page, const std::wstring& input) {
+    const auto in_size = WideCharToMultiByte(code_page, 0, input.data(), static_cast<int>(input.size()), nullptr, 0, nullptr, nullptr);
+
+    if (in_size == 0) {
+        return "";
     }
-    return sjis_string;
+
+    std::string output(in_size, '\0');
+
+    if (in_size != WideCharToMultiByte(code_page, 0, input.data(), static_cast<int>(input.size()), output.data(), static_cast<int>(output.size()), nullptr, nullptr)) {
+        output.clear();
+    }
+
+    return output;
 }
