@@ -1,22 +1,11 @@
-#include <sstream>
-#include <iostream>
-#include <filesystem>
-#include <fstream>
-#include <thread>
-#include <chrono>
-#include <array>
-
+#include "age-shared.h"
 #include "disassembler.h"
 #include "reassembler.h"
 
-template<typename T>
-inline void update_max(std::atomic<T>& atom, const T val) {
-    for (T atom_val = atom;
-        atom_val < val &&
-        !atom.compare_exchange_strong(atom_val, val, std::memory_order_seq_cst);
-        );
-}
-static std::atomic<size_t> max_val;
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <fstream>
 
 const std::size_t NUM_THREADS = std::max(std::thread::hardware_concurrency(), 4U);
 void doDisassemble();

@@ -1,9 +1,10 @@
 #include "Windows.h"
 #include "age-shared.h"
+#include <map>
 
 // Keep this array ordered by op_code for binary search
-constexpr static auto definitions{
-    std::to_array<Instruction_Definition>({
+static consteval auto make_defs() {
+    return std::to_array<Instruction_Definition>({
         {0x1, "u004149C0", 0x0}, // error
         {0x2, "exit", 0x0},
         {0x3, "call-script", 0x1}, // call another script, param = SYSTEM4.bin index
@@ -541,16 +542,17 @@ constexpr static auto definitions{
         {0x392, "392", 0x1}, // Tenmei no Conquista
         {0x396, "396", 0x5}, // Tenmei no Conquista
         {0x399, "399", 0x7}, // Tenmei no Conquista
-        })
-};
+        });
+}
+static constexpr auto definitions = make_defs();
 
 const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamoff offset) {
-    u32 low = 0;
-    u32 high = (u32)definitions.size() - 1;
+    size_t low = 0;
+    size_t high = definitions.size() - 1;
 
     while (low <= high) {
-        u32 mid = (low + high) >> 1;
-        u32 mid_op_code = definitions[mid].op_code;
+        const size_t mid = (low + high) >> 1;
+        const size_t mid_op_code = definitions[mid].op_code;
 
         if (mid_op_code < op_code) {
             low = mid + 1;
@@ -563,29 +565,28 @@ const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamof
 
     fprintf(stderr, "Unknown instruction : 0x%x at 0x%llx\n", op_code, offset);
     exit(-1);
-
     return nullptr;
 }
 
-static std::map<const std::string, const Instruction_Definition*> str_memo;
+static std::map<const std::string_view, const Instruction_Definition*> str_memo;
 
-const Instruction_Definition* instruction_for_label(const std::string& label) {
-    auto instr = str_memo[label];
-    if (instr != nullptr) return instr;
-
-    // We'll have to actually scan through here
-    const auto it = std::find_if(definitions.begin(), definitions.end(),
-                                 [&](const Instruction_Definition& val) { return val.label == label; });
-
-    //const std::string insert{label};
-    if (it != definitions.end()) {
-        str_memo[label] = &*it;
-        return &*it;
+const Instruction_Definition* instruction_for_label(const std::string_view label) {
+    const auto it = str_memo.find(label);
+    if (it != str_memo.end()) {
+        return it->second;
     }
 
-    fprintf(stderr, "unknown instruction : %s\n", label.c_str());
-    exit(-1);
+    // We'll have to actually scan through here
+    const auto instr = std::find_if(definitions.begin(), definitions.end(),
+                                 [&](const Instruction_Definition& instr) { return instr.label == label; });
 
+    if (instr != definitions.end()) {
+        str_memo[instr->label] = &*instr;
+        return &*instr;
+    }
+
+    fprintf(stderr, "Unknown instruction : %s\n", label.data());
+    exit(-1);
     return nullptr;
 }
 

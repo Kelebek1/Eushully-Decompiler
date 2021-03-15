@@ -1,28 +1,20 @@
 #pragma once
-#include <string>
-#include <vector>
-#include <array>
-#include <fstream>
-#include <map>
-#include <unordered_map>
+#include <sstream>
+#include <unordered_set>
 #include <filesystem>
+#include <span>
+#include <array>
 #include "types.h"
 
 static constexpr size_t HEADER_LENGTH = 60;
-static const std::string HEADER_PREFIX = "==Binary Information - do not edit==\n";
-static const std::string HEADER_SUFFIX = "====\n\n";
-static const std::string SIGNATURE_PREFIX = "signature = ";
-static const std::string VARS_PREFIX = "\nlocal_vars = { ";
-static const std::string VARS_SUFFIX = " }\n";
 
 #define CP_UTF8 65001
 #define CP_932 932
-
 std::wstring cp_to_utf16(u32 code_page, const std::string& input);
 std::string utf16_to_cp(u32 code_page, const std::wstring& input);
 
 struct BinaryHeader {
-    u8 signature[8];
+    unsigned char signature[8];
 
     u32 local_integer_1;
     u32 local_floats;
@@ -78,26 +70,34 @@ struct Argument {
 };
 
 struct Instruction_Definition {
-    u32 op_code;
-    std::string_view label;
-    u32 argument_count;
+    const u32 op_code;
+    const std::string_view label;
+    const u32 argument_count;
 };
 
 struct Instruction {
     const Instruction_Definition* definition;
-    std::vector<const Argument*> arguments;
+    std::vector<Argument> arguments;
     std::streamoff offset;
 
-    Instruction(const Instruction_Definition* def, std::vector<const Argument*> args, std::streamoff off) :
-        definition(std::move(def)),
+    Instruction(const Instruction_Definition* def, std::vector<Argument> args, std::streamoff off) :
+        definition(def),
         arguments(std::move(args)),
-        offset(std::move(off)) {
-
+        offset(off) {
+    }
+    Instruction(const Instruction_Definition* def, std::streamoff off) :
+        definition(def),
+        offset(off) {
+        arguments.reserve(4);
+    }
+    
+    Argument* GetArgument(size_t idx) {
+        return &arguments.at(idx);
     }
 };
 
 const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamoff offset);
-const Instruction_Definition* instruction_for_label(const std::string& label);
+const Instruction_Definition* instruction_for_label(const std::string_view label);
 
 inline constexpr bool is_control_flow(const Instruction_Definition* instruction) {
     return instruction->op_code == 0x8C ||
@@ -112,20 +112,20 @@ inline constexpr bool is_control_flow(const Instruction_Definition* instruction)
         instruction->op_code == 0x7B;
 }
 
-inline constexpr bool is_control_flow(const Instruction* instruction) {
-    return is_control_flow(instruction->definition);
+inline constexpr bool is_control_flow(const Instruction& instruction) {
+    return is_control_flow(instruction.definition);
 }
 
 inline constexpr bool is_array(const Instruction_Definition* instruction) {
     return instruction->op_code == 0x64;
 }
 
-inline constexpr bool is_label_argument(const Instruction* instruction, s32 x) {
-    return ((instruction->definition->op_code == 0x8C || instruction->definition->op_code == 0x8F) && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
-        (instruction->definition->op_code == 0xA0 && x > 0 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
-        ((instruction->definition->op_code == 0xCC || instruction->definition->op_code == 0xFB) && x > 0 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
-        (instruction->definition->op_code == 0xD4 && x >= 2 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
-        (instruction->definition->op_code == 0x90 && x >= 4 && instruction->arguments[x]->raw_data != 0xFFFFFFFF) ||
-        (instruction->definition->op_code == 0x7B && instruction->arguments[x]->raw_data != 0xFFFFFFFF);
+inline constexpr bool is_label_argument(const Instruction& instruction, s32 x) {
+    return ((instruction.definition->op_code == 0x8C || instruction.definition->op_code == 0x8F) && instruction.arguments[x].raw_data != 0xFFFFFFFF) ||
+        (instruction.definition->op_code == 0xA0 && x > 0 && instruction.arguments[x].raw_data != 0xFFFFFFFF) ||
+        ((instruction.definition->op_code == 0xCC || instruction.definition->op_code == 0xFB) && x > 0 && instruction.arguments[x].raw_data != 0xFFFFFFFF) ||
+        (instruction.definition->op_code == 0xD4 && x >= 2 && instruction.arguments[x].raw_data != 0xFFFFFFFF) ||
+        (instruction.definition->op_code == 0x90 && x >= 4 && instruction.arguments[x].raw_data != 0xFFFFFFFF) ||
+        (instruction.definition->op_code == 0x7B && instruction.arguments[x].raw_data != 0xFFFFFFFF);
 }
 
