@@ -212,7 +212,7 @@ std::stringstream write_script_file(BinaryHeader& header, std::span<Instruction>
 
     for (auto& instruction : instructions) {
         // If this instruction is referenced as a label, make it clear
-        if (labels.count(instruction.offset)) {
+        if (labels.find(instruction.offset) != labels.end()) {
             std::stringstream label_instr;
             label_instr << "\nlabel_";
             label_instr << std::right << std::setfill('0') << std::setw(8) << 

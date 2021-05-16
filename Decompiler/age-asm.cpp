@@ -26,14 +26,19 @@ int main(s32 argc, char** argv) {
     std::filesystem::path input(argv[2]);
     std::filesystem::path output;
 
-    if (strcmp(argv[1], "-x") == 0) {
+    std::vector<std::string> args;
+    for (int i = 0; i < argc; ++i) {
+        args.push_back(*argv++);
+    }
+
+    if (args[1] == "-x") {
         // For debugging. Reads a file, disassembles it, reassembles, 
         // and checks that the original and reassembled are binary identical
         if (std::filesystem::is_directory(input)) {
             for (auto& file : std::filesystem::directory_iterator(input)) {
                 if (file.path().extension() == ".bin" ||
-                    file.path().extension() == ".BIN" || 
-                    file.path().extension() == ".txt" || 
+                    file.path().extension() == ".BIN" ||
+                    file.path().extension() == ".txt" ||
                     file.path().extension() == ".TXT") {
                     files.emplace_back(file, std::filesystem::path{});
                 }
@@ -47,13 +52,28 @@ int main(s32 argc, char** argv) {
             CheckFile(input);
         }
 
-    } else if (strcmp(argv[1], "-d") == 0) {
-        // Dissassemble
+    } else if (args[1] == "-d" || args[1] == "-a") {
+        // Dissassemble / Assemble
+        const bool isDissassemble = args[1] == "-d" ? true : false;
+
         if (std::filesystem::is_directory(input)) {
-            if (argc > 3) {
-                output = std::string(argv[3]) + "/";
-            } else {
+            std::string inExt, upperExt, outExt;
+            if (args.size() > 3) {
+                output = args[3] + "/";
+            } else if (isDissassemble) {
                 output = "decompiled/";
+            } else {
+                output = "compiled/";
+            }
+
+            if (isDissassemble) {
+                inExt = ".bin";
+                upperExt = ".BIN";
+                outExt = ".txt";
+            } else {
+                inExt = ".txt";
+                upperExt = ".TXT";
+                outExt = ".BIN";
             }
 
             if (!std::filesystem::is_directory(output)) {
@@ -61,82 +81,47 @@ int main(s32 argc, char** argv) {
             }
 
             for (auto& file : std::filesystem::directory_iterator(input)) {
-                if (file.path().extension() == ".bin" ||
-                    file.path().extension() == ".BIN") {
+                if (file.file_size() > 0 && 
+                    file.path().extension() == inExt ||
+                    file.path().extension() == upperExt) {
                     output.replace_filename(file.path().filename());
-                    output.replace_extension(".txt");
+                    output.replace_extension(outExt);
                     files.emplace_back(file, output);
                 }
             }
         } else {
-            if (argc > 3) {
-                output = argv[3];
+            if (args.size() > 3) {
+                output = args[3];
             } else {
                 output = input;
+                output.replace_extension(isDissassemble ? ".txt" : ".BIN");
             }
             //std::cout << "Single file, in: " << input.string() << " out: " << output.string() << "\n";
             files.emplace_back(input, std::move(output));
         }
 
-        auto start = std::chrono::system_clock::now();
+        const auto start = std::chrono::system_clock::now();
 
         std::vector<std::thread> threads;
         for (u32 i = 0; i < std::min(NUM_THREADS, files.size()); i++) {
-            threads.emplace_back(doDisassemble);
+            threads.emplace_back(isDissassemble ? doDisassemble : doAssemble);
         }
 
         for (auto& thread : threads) {
             thread.join();
         }
 
-        auto end = std::chrono::system_clock::now();
-        std::cout << "Disassembly took " << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 << "s on " << std::thread::hardware_concurrency() << " cores." << '\n';
+        const auto end = std::chrono::system_clock::now();
 
-    } else if (strcmp(argv[1], "-a") == 0) {
-        // Assemble
-        if (std::filesystem::is_directory(input)) {
-            if (argc > 3) {
-                output = std::string(argv[3]) + "/";
-            } else {
-                output = "compiled/";
-            }
+        if (isDissassemble)
+            std::cout << "Disassembly took ";
+        else
+            std::cout << "Assembly took ";
+        std::cout << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 <<
+            "s on " << std::thread::hardware_concurrency() << " cores." << '\n';
 
-            if (!std::filesystem::is_directory(output)) {
-                std::filesystem::create_directories(output);
-            }
-
-            for (auto& file : std::filesystem::directory_iterator(input)) {
-                if (file.path().extension() == ".txt") {
-                    output.replace_filename(file.path().filename());
-                    output.replace_extension(".BIN");
-                    files.emplace_back(file, output);
-                }
-            }
-        } else {
-            if (argc > 3) {
-                output = argv[3];
-            } else {
-                output = input;
-            }
-            files.emplace_back(input, std::move(output));
-        }
-
-        auto start = std::chrono::system_clock::now();
-        
-        std::vector<std::thread> threads;
-        for (u32 i = 0; i < std::min(NUM_THREADS, files.size()); ++i) {
-            threads.emplace_back(doAssemble);
-        }
-
-        for (auto& thread : threads) {
-            thread.join();
-        }
-        
-        auto end = std::chrono::system_clock::now();
-
-        std::cout << "Assembly took " << (float)std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000 << "s on " << std::thread::hardware_concurrency() << " cores." << '\n';
     } else {
-        fprintf(stderr, "Unknown option : %s\n", argv[1]);
+        fprintf(stderr, "Unknown option : %s\n", args[1].c_str());
         return -1;
     }
     return 0;
@@ -155,7 +140,7 @@ void doDisassemble() {
             fprintf(stderr, "Unable to open %s, skipping.\n", input.string().c_str());
             continue;
         }
-        std::stringstream fd{ disassemble(fd_in) };
+        std::stringstream fd{disassemble(fd_in)};
         std::ofstream fd_out(output, std::ios::out | std::ios::binary);
         fd_out.write(fd.str().data(), fd.str().length());
     }
@@ -174,12 +159,11 @@ void doAssemble() {
             fprintf(stderr, "Unable to open %s, skipping.\n", input.string().c_str());
             continue;
         }
-        std::stringstream fd{ assemble(fd_in) };
+        std::stringstream fd{assemble(fd_in)};
         std::ofstream fd_out(output, std::ios::out | std::ios::binary);
         fd_out.write(fd.str().data(), fd.str().length());
     }
 }
-
 
 bool compareFile(std::istream& f1, std::istream& f2) {
     // Read 128Kb at a time
@@ -243,9 +227,9 @@ void doCheckFile() {
 
     while (front < files.size()) {
         auto& [input, output] = files[front++];
-        
+
         fprintf(stdout, "Checking file %s\n", input.string().c_str());
-        
+
         CheckFile(input);
     }
 }

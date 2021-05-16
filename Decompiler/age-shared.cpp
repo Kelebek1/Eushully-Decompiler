@@ -577,8 +577,8 @@ const Instruction_Definition* instruction_for_label(const std::string_view label
     }
 
     // We'll have to actually scan through here
-    const auto instr = std::find_if(definitions.begin(), definitions.end(),
-                                 [&](const Instruction_Definition& instr) { return instr.label == label; });
+    const auto instr = std::ranges::find_if(definitions,
+                                 [&label](const Instruction_Definition& instr) { return instr.label == label; });
 
     if (instr != definitions.end()) {
         str_memo[instr->label] = &*instr;
