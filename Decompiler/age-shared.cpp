@@ -416,6 +416,8 @@ static consteval auto make_defs() {
         {0x25F, "u00423125", 0x4},
         {0x260, "u00423126", 0x4},
         {0x261, "u00423127", 0x1},
+        {0x262, "262", 0x1}, // Amayui 2
+        {0x263, "263", 0x1}, // Amayui 2
         {0x2BC, "u00423020", 0xB},
         {0x2BD, "u00423100", 0x1},
         {0x2BE, "u00423140", 0x1},
@@ -526,12 +528,16 @@ static consteval auto make_defs() {
         {0x352, "352", 0x3}, // Amayui Alchemy Meister
         {0x353, "353", 0x2}, // Fuukan no Gransesta
         {0x354, "354", 0x2}, // Fuukan no Gransesta
+        {0x358, "358", 0x5}, // Amayui 2
+        {0x35A, "35A", 0x5}, // Amayui 2
         {0x35B, "35B", 0x2}, // Fuukan no Gransesta
         {0x35C, "35C", 0x2}, // Fuukan no Gransesta
         {0x35D, "35D", 0x3}, // Fuukan no Gransesta
         {0x35F, "35F", 0x3}, // Fuukan no Gransesta
         {0x360, "360", 0x3}, // Fuukan no Gransesta
         {0x361, "361", 0x2}, // Fuukan no Gransesta
+        {0x363, "363", 0x3}, // Amayui 2
+        {0x364, "364", 0x3}, // Amayui 2
         {0x384, "384", 0x3}, // Tenmei no Conquista
         {0x386, "386", 0xB}, // Tenmei no Conquista
         {0x387, "387", 0x8}, // Tenmei no Conquista
@@ -539,9 +545,13 @@ static consteval auto make_defs() {
         {0x389, "389", 0x6}, // Tenmei no Conquista
         {0x38F, "38F", 0x6}, // Tenmei no Conquista
         {0x390, "390", 0x7}, // Tenmei no Conquista
+        {0x391, "391", 0x2}, // Amayui 2
         {0x392, "392", 0x1}, // Tenmei no Conquista
+        {0x393, "393", 0x6}, // Amayui 2
         {0x396, "396", 0x5}, // Tenmei no Conquista
+        {0x398, "398", 0x3}, // Amayui 2
         {0x399, "399", 0x7}, // Tenmei no Conquista
+        {0x39B, "39B", 0x5}, // Amayui 2
         });
 }
 static constexpr auto definitions = make_defs();
