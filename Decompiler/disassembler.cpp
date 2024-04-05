@@ -1,11 +1,12 @@
 #include "age-shared.h"
 #include "disassembler.h"
 
-Instruction parse_instruction(std::istream& fd, const Instruction_Definition* def, std::streamoff offset, std::streamoff* data_array_end) {
+#include <iostream>
+
+Instruction parse_instruction(std::istream& fd, Header& header, const Instruction_Definition* def, std::streamoff offset, std::streamoff* data_array_end) {
     std::vector<Argument> arguments;
     arguments.reserve(def->argument_count);
 
-    ;
     for (u32 current{0}; current < def->argument_count; ++current) {
         Argument& arg = arguments.emplace_back();
         // reads only 2 uint32_t
@@ -14,7 +15,7 @@ Instruction parse_instruction(std::istream& fd, const Instruction_Definition* de
         // If this instruction is a 'String' or copy-array argument, we have to alter data_array_end accordingly.
         if (arg.type == 2) {
             // Strings are all located at the end of the data array, XORed with 0xFF, and separated by 0xFF.
-            std::streamoff string_offset = HEADER_LENGTH + (static_cast<uint64_t>(arg.raw_data) << 2);
+            std::streamoff string_offset = header.GetLength() + (static_cast<uint64_t>(arg.raw_data) << 2);
             *data_array_end = std::min(*data_array_end, string_offset);
 
             // mark current
@@ -26,22 +27,40 @@ Instruction parse_instruction(std::istream& fd, const Instruction_Definition* de
             // read the string, XOR'ing each character
             std::string decoded;
             decoded.reserve(32);
-            u8 character{};
-            fd.read((char*)&character, sizeof(character));
-            while (character != 0xFF) {
-                character ^= 0xFF;
-                decoded += character;
-                fd.read((char*)&character, sizeof(character));
-            }
 
-            // convert it over to UTF8 for easier text editing
-            arg.decoded_string = utf16_to_cp(CP_UTF8, cp_to_utf16(CP_932, decoded));
+            if (header.IsVer5()) {
+                std::wstring utf16_decoded{};
+                u16 character{};
+                fd.read((char*)&character, sizeof(character));
+                while (character != 0xFFFF) {
+                    character ^= 0xFFFF;
+                    // flip the bytes, we need little endian
+                    //character = ((character & 0xFF00) >> 8) | ((character & 0xFF) << 8);
+                    utf16_decoded += character;
+                    fd.read((char*)&character, sizeof(character));
+                }
+
+                // convert it over to UTF8 for easier text editing
+                arg.decoded_stringv4 = utf16_to_cp(CP_UTF8, utf16_decoded);
+            } else {
+                // SJIS -> UTF8
+                u8 character{};
+                fd.read((char*)&character, sizeof(character));
+                while (character != 0xFF) {
+                    character ^= 0xFF;
+                    decoded += character;
+                    fd.read((char*)&character, sizeof(character));
+                }
+
+                // convert it over to UTF8 for easier text editing
+                arg.decoded_stringv4 = utf16_to_cp(CP_UTF8, cp_to_utf16(CP_932, decoded));
+            }
 
             // Go back to the instruction position
             fd.seekg(cur_off, std::ios::beg);
         } else if (def->op_code == 0x64 && current == 1) {
             // This instruction actually references an array in the file's footer.
-            std::streamoff array_offset = HEADER_LENGTH + (static_cast<std::int64_t>(arg.raw_data) << 2);
+            std::streamoff array_offset = header.GetLength() + (static_cast<std::int64_t>(arg.raw_data) << 2);
             *data_array_end = std::min(*data_array_end, array_offset);
 
             // mark current
@@ -68,7 +87,7 @@ Instruction parse_instruction(std::istream& fd, const Instruction_Definition* de
     return Instruction(def, arguments, offset);
 }
 
-std::string disassemble_header(BinaryHeader& header) {
+std::string disassemble_header(Header& header) {
     static constexpr std::string_view HEADER_PREFIX = "==Binary Information - do not edit==\n";
     static constexpr std::string_view HEADER_SUFFIX = "====\n\n";
     static constexpr std::string_view SIGNATURE_PREFIX = "signature = ";
@@ -76,22 +95,24 @@ std::string disassemble_header(BinaryHeader& header) {
     static constexpr std::string_view VARS_SUFFIX = " }\n";
     std::stringstream stream(std::stringstream::out);
 
+    auto binary_header{header.GetHeader()};
+
     stream << HEADER_PREFIX;
     stream << SIGNATURE_PREFIX;
-    stream.write((char*)header.signature, sizeof(header.signature));
+    stream.write((char*)binary_header.signature, sizeof(binary_header.signature));
 
     stream << VARS_PREFIX;
-    stream << std::hex << header.local_integer_1;
+    stream << std::hex << binary_header.local_integer_1;
     stream << ' ';
-    stream << std::hex << header.local_floats;
+    stream << std::hex << binary_header.local_floats;
     stream << ' ';
-    stream << std::hex << header.local_strings_1;
+    stream << std::hex << binary_header.local_strings_1;
     stream << ' ';
-    stream << std::hex << header.local_integer_2;
+    stream << std::hex << binary_header.local_integer_2;
     stream << ' ';
-    stream << std::hex << header.unknown_data;
+    stream << std::hex << binary_header.unknown_data;
     stream << ' ';
-    stream << std::hex << header.local_strings_2;
+    stream << std::hex << binary_header.local_strings_2;
     stream << VARS_SUFFIX;
 
     stream << HEADER_SUFFIX;
@@ -131,7 +152,7 @@ const std::string get_type_label(u32 type) {
     }
 }
 
-std::string disassemble_instruction(const Instruction& instruction) {
+std::string disassemble_instruction(Header& header, const Instruction& instruction) {
     std::stringstream stream(std::stringstream::out);
 
     // Give the loc of where we are
@@ -155,7 +176,7 @@ std::string disassemble_instruction(const Instruction& instruction) {
         } else if (argument.type == 2) {
             // e.g. "this is a string"
             stream << '"';
-            stream << argument.decoded_string;
+            stream << argument.decoded_stringv4;
             stream << '"';
         } else if (instruction.definition->op_code == 0x64 && argument.type == 0) {
             // e.g. [1 2 3 4 5 6]
@@ -172,7 +193,7 @@ std::string disassemble_instruction(const Instruction& instruction) {
             if (is_label_argument(instruction, x)) {
                 stream << "label_";
                 stream << std::right << std::setfill('0') << std::setw(8) << 
-                    std::hex << HEADER_LENGTH + (static_cast<uint64_t>(argument.raw_data) << 2);
+                    std::hex << header.GetLength() + (static_cast<uint64_t>(argument.raw_data) << 2);
             } else {
                 stream << std::hex << argument.raw_data;
             }
@@ -191,7 +212,7 @@ std::string disassemble_instruction(const Instruction& instruction) {
     return stream.str();
 }
 
-std::stringstream write_script_file(BinaryHeader& header, std::span<Instruction> instructions) {
+std::stringstream write_script_file(Header& header, std::span<Instruction> instructions) {
     // Find out which of our instructions are labels
     std::unordered_set<u32> labels;
     for (auto& instruction : instructions) {
@@ -216,12 +237,12 @@ std::stringstream write_script_file(BinaryHeader& header, std::span<Instruction>
             std::stringstream label_instr;
             label_instr << "\nlabel_";
             label_instr << std::right << std::setfill('0') << std::setw(8) << 
-                std::hex << HEADER_LENGTH + (instruction.offset << 2);
+                std::hex << header.GetLength() + (instruction.offset << 2);
             label_instr << '\n';
             output << std::move(label_instr.str());
         }
 
-        output << disassemble_instruction(instruction);
+        output << disassemble_instruction(header, instruction);
     }
 
     output.flush();
@@ -229,10 +250,11 @@ std::stringstream write_script_file(BinaryHeader& header, std::span<Instruction>
 }
 
 std::stringstream disassemble(std::istream& fd) {
-    BinaryHeader header;
-    fd >> header;
+    Header header(fd);
 
-    std::streamoff data_array_end = HEADER_LENGTH + (static_cast<uint64_t>(std::min(std::min(header.table_1_offset, header.table_2_offset), header.table_3_offset)) << 2);
+    auto& binary_hdr{header.GetHeader()};
+
+    std::streamoff data_array_end = header.GetLength() + (static_cast<uint64_t>(std::min(std::min(binary_hdr.table_1_offset, binary_hdr.table_2_offset), binary_hdr.table_3_offset)) << 2);
     std::streamoff strings_end = data_array_end;
 
     std::vector<Instruction> instructions;
@@ -243,8 +265,13 @@ std::stringstream disassemble(std::istream& fd) {
         u32 op_code{};
         fd.read((char*)&op_code, sizeof(op_code));
 
+        if (op_code == 0x0) {
+            fprintf(stderr, "Offset 0x%llX bad opcode : %X\n", offset, op_code);
+            exit(-1);
+        }
+
         const Instruction_Definition* def = instruction_for_op_code(op_code, offset);
-        instructions.emplace_back(parse_instruction(fd, def, (offset - HEADER_LENGTH) >> 2, &data_array_end));
+        instructions.emplace_back(parse_instruction(fd, header, def, (offset - header.GetLength()) >> 2, &data_array_end));
     }
 
     return write_script_file(header, instructions);

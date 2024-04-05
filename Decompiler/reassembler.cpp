@@ -75,15 +75,15 @@ auto parse_multiple_arguments(std::string line, const std::regex& regex) {
     return elements;
 }
 
-BinaryHeader parse_header(std::istream& fd) {
+Header parse_header(std::istream& fd) {
     // All we are interested in are the signature and local_vars
-    BinaryHeader header;
+    BinaryHeader binary_header;
     std::string line;
 
     std::getline(fd, line); // ==Binary Information - do not edit==
 
     std::getline(fd, line); // Signature = SYSxxxx
-    std::memcpy(header.signature, line.substr(line.find("= ") + 2, line.length()).data(), sizeof(header.signature));
+    std::memcpy(binary_header.signature, line.substr(line.find("= ") + 2, line.length()).data(), sizeof(binary_header.signature));
 
     std::getline(fd, line); // local_vars = { }
     const auto local_vars{ parse_multiple_arguments(line, re_local_vars) };
@@ -93,18 +93,20 @@ BinaryHeader parse_header(std::istream& fd) {
         _exit(-1);
     }
 
+    binary_header.sub_header_length = 0x1C; // can this be anything else?
+
     // Local vars are in hex string form, separated by a whitespace
-    header.local_integer_1 = std::stoul(local_vars[0][0], nullptr, 16);
-    header.local_floats = std::stoul(local_vars[1][0], nullptr, 16);
-    header.local_strings_1 = std::stoul(local_vars[2][0], nullptr, 16);
-    header.local_integer_2 = std::stoul(local_vars[3][0], nullptr, 16);
-    header.unknown_data = std::stoul(local_vars[4][0], nullptr, 16);
-    header.local_strings_2 = std::stoul(local_vars[5][0], nullptr, 16);
+    binary_header.local_integer_1 = std::stoul(local_vars[0][0], nullptr, 16);
+    binary_header.local_floats = std::stoul(local_vars[1][0], nullptr, 16);
+    binary_header.local_strings_1 = std::stoul(local_vars[2][0], nullptr, 16);
+    binary_header.local_integer_2 = std::stoul(local_vars[3][0], nullptr, 16);
+    binary_header.unknown_data = std::stoul(local_vars[4][0], nullptr, 16);
+    binary_header.local_strings_2 = std::stoul(local_vars[5][0], nullptr, 16);
 
     std::getline(fd, line); // ====
 
     // We have now read all of our header, and positioned the file handle at the start of our instruction list
-    return header;
+    return std::move(binary_header);
 }
 
 inline constexpr size_t compute_length(Instruction_Definition definition) {
@@ -112,10 +114,19 @@ inline constexpr size_t compute_length(Instruction_Definition definition) {
     return 4 + (static_cast<size_t>(definition.argument_count) << 3);
 }
 
-std::stringstream write_assembled_file(BinaryHeader& header, std::span<Instruction> instructions, std::string_view string_data, std::span<u32> footer_data) {
+std::stringstream write_assembled_file(Header& header, std::span<Instruction> instructions, std::string_view string_data, std::span<u32> footer_data) {
     std::stringstream output(std::stringstream::in | std::stringstream::out | std::stringstream::binary);
+    auto& binary_header{header.GetHeader()};
 
-    output.write((char*)&header, sizeof(header));
+    if (header.IsVer5()) {
+        std::string utf8_sig{binary_header.signature};
+        utf8_sig[utf8_sig.size() - 1] = '\0';
+        auto u16_sig{cp_to_utf16(CP_UTF8, utf8_sig)};
+        output.write((char*)u16_sig.data(), 16);
+        output.write((char*)&binary_header.local_integer_1, sizeof(binary_header) - sizeof(binary_header.signature));
+    } else {
+        output.write((char*)&binary_header, sizeof(binary_header));
+    }
 
     for (const auto& instruction : instructions) {
         output.write((char*)&instruction.definition->op_code, sizeof(u32));
@@ -132,8 +143,8 @@ std::stringstream write_assembled_file(BinaryHeader& header, std::span<Instructi
 }
 
 std::stringstream assemble(std::istream& fd) {
-    BinaryHeader header = parse_header(fd);
-    header.sub_header_length = 0x1C; // can this be anything else?
+    Header header = parse_header(fd);
+    auto& binary_header{header.GetHeader()};
     // Note that the header is not fully initialized : some of its information may change and has to be computed again.
     // For now, we need to parse the instruction list.
 
@@ -159,7 +170,7 @@ std::stringstream assemble(std::istream& fd) {
     std::vector<std::pair<size_t, size_t>> array_arguments;
     array_arguments.reserve(100);
 
-    u32 data_array_end = HEADER_LENGTH;
+    u32 data_array_end = header.GetLength();
 
     std::string line;
     u32 line_count = 6;
@@ -211,7 +222,7 @@ std::stringstream assemble(std::istream& fd) {
                 // str_arguments is a 2D vector of argument and argument info
                 // str_arguments[x][REG_TYPE] contains scope and type          (e.g. the "global-int" in "global-int 7")
                 // str_arguments[x][REG_NUM]  contains value when above is set (e.g. the 7 in "global-int 7")
-                // str_arguments[x][STR]      contains string literals
+                // str_arguments[x][STR]      contains string literals, e.g text lines
                 // str_arguments[x][LABEL]    contains labels
                 // str_arguments[x][VALUE]    contains number literals
 
@@ -225,8 +236,13 @@ std::stringstream assemble(std::istream& fd) {
                     // We'll have to "restore" this argument's data later on as the offset where the string will be written
                     current.type = 2;
 
-                    // Convert back to CP932
-                    current.decoded_string = utf16_to_cp(CP_932, cp_to_utf16(CP_UTF8, arg[ARGUMENT_TYPE::STR]));
+                    if (header.IsVer5()) {
+                        // Convert back to UTF16
+                        current.decoded_stringv5 = cp_to_utf16(CP_UTF8, arg[ARGUMENT_TYPE::STR]);
+                    } else {
+                        // Convert back to CP932
+                        current.decoded_stringv4 = utf16_to_cp(CP_932, cp_to_utf16(CP_UTF8, arg[ARGUMENT_TYPE::STR]));
+                    }
 
                     string_arguments.push_back(current_index);
                 } else if (!arg[ARGUMENT_TYPE::LABEL].empty()) {
@@ -271,7 +287,7 @@ std::stringstream assemble(std::istream& fd) {
     for (auto& [instr_idx, arg_idx] : label_arguments) {
         Instruction* instr = &instructions[instr_idx];
         Argument* arg = instr->GetArgument(arg_idx);
-        arg->raw_data = (label_to_offset[arg->raw_data] - HEADER_LENGTH) >> 2;
+        arg->raw_data = (label_to_offset[arg->raw_data] - header.GetLength()) >> 2;
     }
 
     // Restore the strings offsets
@@ -282,26 +298,41 @@ std::stringstream assemble(std::istream& fd) {
         Instruction* instr = &instructions[instr_idx];
         Argument* arg = instr->GetArgument(arg_idx);
 
-        arg->raw_data = (current_string_offset - HEADER_LENGTH) >> 2;
+        arg->raw_data = (current_string_offset - header.GetLength()) >> 2;
         // we have at least one 0xFF as a separator, + as many as needed to reach a multiple of four for the next offset.
-        current_string_offset += arg->decoded_string.length() + 1;
+        if (header.IsVer5()) {
+            current_string_offset += (arg->decoded_stringv5.length() + 1) * 2;
 
-        for (u32 i = 0; i < arg->decoded_string.length(); i++) {
-            string_data += arg->decoded_string[i] ^ 0xFF;
-        }
+            for (u32 i = 0; i < arg->decoded_stringv5.length() * 2; i++) {
+                string_data += ((char*)arg->decoded_stringv5.data())[i] ^ 0xFF;
+            }
 
-        u32 padding = 4 - ((current_string_offset) % 4);
-        for (u32 i = 0; i < padding + 1; i++) {
-            string_data += 0xFF;
+            u32 padding = 4 - (current_string_offset % 4);
+            for (u32 i = 0; i < padding + 2; i++) {
+                string_data += 0xFF;
+            }
+            current_string_offset += padding;
         }
-        current_string_offset += padding;
+        else {
+            current_string_offset += arg->decoded_stringv4.length() + 1;
+
+            for (u32 i = 0; i < arg->decoded_stringv4.length(); i++) {
+                string_data += arg->decoded_stringv4[i] ^ 0xFF;
+            }
+
+            u32 padding = 4 - (current_string_offset % 4);
+            for (u32 i = 0; i < padding + 1; i++) {
+                string_data += 0xFF;
+            }
+            current_string_offset += padding;
+        }
     }
 
     // assemble the offset indexing of the footer
     std::vector<u32> footer_data;
     footer_data.reserve(1'000);
     // Restore the array offsets
-    u32 current_array_offset = (current_string_offset - HEADER_LENGTH) >> 2;
+    u32 current_array_offset = (current_string_offset - header.GetLength()) >> 2;
     for (auto& [instr_idx, arg_idx] : array_arguments) {
         Instruction* instr = &instructions[instr_idx];
         Argument* arg = instr->GetArgument(arg_idx);
@@ -313,20 +344,32 @@ std::stringstream assemble(std::istream& fd) {
                            arg->data_array.data.begin(), arg->data_array.data.end());
     }
 
+    std::vector<u32> instr_71_vec;
+    instr_71_vec.reserve(instr_71_offsets.size());
     std::for_each(instr_71_offsets.begin(), instr_71_offsets.end(), 
-                  [&](u32 offset) { footer_data.push_back((offset - HEADER_LENGTH) >> 2); });
-    header.table_1_length = instr_71_offsets.size();
-    header.table_1_offset = current_array_offset;
+                  [&](u32 offset) { instr_71_vec.push_back((offset - header.GetLength()) >> 2); });
+    std::sort(instr_71_vec.begin(), instr_71_vec.end(), [](const u32 lhs, const u32 rhs) { return lhs < rhs; });
+    footer_data.insert(footer_data.end(), instr_71_vec.begin(), instr_71_vec.end());
+    binary_header.table_1_length = instr_71_vec.size();
+    binary_header.table_1_offset = current_array_offset;
 
+    std::vector<u32> instr_3_vec;
+    instr_3_vec.reserve(instr_3_offsets.size());
     std::for_each(instr_3_offsets.begin(), instr_3_offsets.end(),
-                  [&](u32 offset) { footer_data.push_back((offset - HEADER_LENGTH) >> 2); });
-    header.table_2_length = instr_3_offsets.size();
-    header.table_2_offset = header.table_1_offset + header.table_1_length;
+        [&](u32 offset) { instr_3_vec.push_back((offset - header.GetLength()) >> 2); });
+    std::sort(instr_3_vec.begin(), instr_3_vec.end(), [](const u32 lhs, const u32 rhs) { return lhs < rhs; });
+    footer_data.insert(footer_data.end(), instr_3_vec.begin(), instr_3_vec.end());
+    binary_header.table_2_length = instr_3_vec.size();
+    binary_header.table_2_offset = binary_header.table_1_offset + binary_header.table_1_length;
 
+    std::vector<u32> instr_8f_vec;
+    instr_8f_vec.reserve(instr_3_offsets.size());
     std::for_each(instr_8f_offsets.begin(), instr_8f_offsets.end(),
-                  [&](u32 offset) { footer_data.push_back((offset - HEADER_LENGTH) >> 2); });
-    header.table_3_length = instr_8f_offsets.size();
-    header.table_3_offset = header.table_2_offset + header.table_2_length;
+        [&](u32 offset) { instr_8f_vec.push_back((offset - header.GetLength()) >> 2); });
+    std::sort(instr_8f_vec.begin(), instr_8f_vec.end(), [](const u32 lhs, const u32 rhs) { return lhs < rhs; });
+    footer_data.insert(footer_data.end(), instr_8f_vec.begin(), instr_8f_vec.end());
+    binary_header.table_3_length = instr_8f_vec.size();
+    binary_header.table_3_offset = binary_header.table_2_offset + binary_header.table_2_length;
 
     return write_assembled_file(header, instructions, string_data, footer_data);
 }

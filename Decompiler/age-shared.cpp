@@ -1,6 +1,7 @@
 #include "Windows.h"
 #include "age-shared.h"
 #include <map>
+#include <iostream>
 
 // Keep this array ordered by op_code for binary search
 static consteval auto make_defs() {
@@ -418,6 +419,7 @@ static consteval auto make_defs() {
         {0x261, "u00423127", 0x1},
         {0x262, "262", 0x1}, // Amayui 2
         {0x263, "263", 0x1}, // Amayui 2
+        {0x264, "264", 0x5}, // Hyakusen
         {0x2BC, "u00423020", 0xB},
         {0x2BD, "u00423100", 0x1},
         {0x2BE, "u00423140", 0x1},
@@ -564,11 +566,14 @@ const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamof
         const size_t mid = (low + high) >> 1;
         const size_t mid_op_code = definitions[mid].op_code;
 
+        //std::cout << "op 0x" << std::hex << op_code << " --- mid 0x" << std::hex << mid << "\n";
+
         if (mid_op_code < op_code) {
             low = mid + 1;
         } else if (mid_op_code > op_code) {
             high = mid - 1;
         } else {
+            //std::cout << "Found instruction 0x" << std::hex << mid_op_code << "\n";
             return &definitions[mid];
         }
     }
