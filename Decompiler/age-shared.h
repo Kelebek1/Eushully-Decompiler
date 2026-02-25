@@ -155,6 +155,7 @@ struct Instruction {
     }
 };
 
+std::string replace_string(std::string subject, const std::string& search, const std::string& replace);
 const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamoff offset);
 const Instruction_Definition* instruction_for_label(const std::string_view label);
 

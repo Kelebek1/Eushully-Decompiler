@@ -41,8 +41,10 @@ Instruction parse_instruction(std::istream& fd, Header& header, const Instructio
                 }
 
                 // convert it over to UTF8 for easier text editing
-                arg.decoded_stringv4 = utf16_to_cp(CP_UTF8, utf16_decoded);
-            } else {
+                auto pre_replace_string = utf16_to_cp(CP_UTF8, utf16_decoded);
+                arg.decoded_stringv4 = replace_string(pre_replace_string, "\"", "\\u0022");
+            } 
+            else {
                 // SJIS -> UTF8
                 u8 character{};
                 fd.read((char*)&character, sizeof(character));
@@ -53,7 +55,8 @@ Instruction parse_instruction(std::istream& fd, Header& header, const Instructio
                 }
 
                 // convert it over to UTF8 for easier text editing
-                arg.decoded_stringv4 = utf16_to_cp(CP_UTF8, cp_to_utf16(CP_932, decoded));
+                auto pre_replace_string = utf16_to_cp(CP_UTF8, cp_to_utf16(CP_932, decoded));
+                arg.decoded_stringv4 = replace_string(pre_replace_string, "\"", "\\u0022");
             }
 
             // Go back to the instruction position

@@ -558,6 +558,16 @@ static consteval auto make_defs() {
 }
 static constexpr auto definitions = make_defs();
 
+std::string replace_string(std::string subject, const std::string& search,
+    const std::string& replace) {
+    size_t pos = 0;
+    while ((pos = subject.find(search, pos)) != std::string::npos) {
+        subject.replace(pos, search.length(), replace);
+        pos += replace.length();
+    }
+    return subject;
+}
+
 const Instruction_Definition* instruction_for_op_code(u32 op_code, std::streamoff offset) {
     size_t low = 0;
     size_t high = definitions.size() - 1;

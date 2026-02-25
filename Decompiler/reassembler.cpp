@@ -236,12 +236,13 @@ std::stringstream assemble(std::istream& fd) {
                     // We'll have to "restore" this argument's data later on as the offset where the string will be written
                     current.type = 2;
 
+                    auto replaced_string = replace_string(arg[ARGUMENT_TYPE::STR], "\\u0022", "\"");
                     if (header.IsVer5()) {
                         // Convert back to UTF16
-                        current.decoded_stringv5 = cp_to_utf16(CP_UTF8, arg[ARGUMENT_TYPE::STR]);
+                        current.decoded_stringv5 = cp_to_utf16(CP_UTF8, replaced_string);
                     } else {
                         // Convert back to CP932
-                        current.decoded_stringv4 = utf16_to_cp(CP_932, cp_to_utf16(CP_UTF8, arg[ARGUMENT_TYPE::STR]));
+                        current.decoded_stringv4 = utf16_to_cp(CP_932, cp_to_utf16(CP_UTF8, replaced_string));
                     }
 
                     string_arguments.push_back(current_index);
